@@ -3,6 +3,36 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import { Volume2 } from 'lucide-react';
 import { clamp } from '@/lib/playerUtils';
 
+export type Source = 'mp3' | 'radio';
+
+const SOURCE_OPTIONS: { id: Source; label: string }[] = [
+  { id: 'mp3', label: 'MP3' },
+  { id: 'radio', label: 'RADIO' },
+];
+
+export function SourceToggle({ value, onChange }: { value: Source; onChange: (source: Source) => void }) {
+  return (
+    <div role="group" aria-label="Sumber audio" className="flex h-10 shrink-0 items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-900 p-1">
+      {SOURCE_OPTIONS.map((option) => {
+        const active = option.id === value;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(option.id)}
+            className={`h-8 rounded-lg px-3 text-xs font-bold tracking-wider transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
+              active ? 'bg-emerald-400 text-emerald-950' : 'text-zinc-400 hover:text-zinc-100'
+            }`}
+          >
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export function VolumeKnob({ value, onChange }: { value: number; onChange: (value: number) => void }) {
   const drag = useRef<{ startY: number; startValue: number } | null>(null);
   const angle = -135 + value * 270;
