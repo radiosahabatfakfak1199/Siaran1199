@@ -343,11 +343,18 @@ export default function RadioPlayer() {
         </div>
       </header>
 
-      <div className="rounded-2xl bg-emerald-400 p-5 text-emerald-950 shadow-[inset_0_2px_6px_rgba(0,0,0,0.25),0_12px_30px_rgba(52,211,153,0.15)]">
+      <div
+        className="rounded-2xl p-5 text-emerald-950"
+        style={{
+          backgroundImage: 'linear-gradient(135deg, #3fe0a2, #1fa971)',
+          boxShadow:
+            'inset 0 2px 0 rgba(255,255,255,.35), inset 0 -10px 24px rgba(0,0,0,.35), inset 0 0 40px rgba(0,0,0,.25), 0 12px 28px rgba(0,0,0,.6)',
+        }}
+      >
         <div className="flex items-stretch gap-4">
-          <div className="flex flex-col justify-between">
+          <div className="flex items-end gap-1.5 self-center">
             <span className="text-5xl font-black leading-none tracking-tight tabular-nums">11.99</span>
-            <span className="text-xl font-black leading-none tracking-tight">FM</span>
+            <span className="text-sm font-bold leading-none tracking-tight">FM</span>
           </div>
           <div className="flex min-w-0 flex-1 flex-col justify-between gap-3">
             <div className="overflow-hidden">
