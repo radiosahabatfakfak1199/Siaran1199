@@ -18,6 +18,7 @@ import {
   Upload,
 } from 'lucide-react';
 import PlaybackSettings from '@/components/PlaybackSettings';
+import VuMeter from '@/components/VuMeter';
 import { SourceToggle, TransportButton, VolumeKnob } from '@/components/PlayerControls';
 import type { Source } from '@/components/PlayerControls';
 import { STATIONS } from '@/data/stations';
@@ -604,6 +605,8 @@ export default function RadioPlayer() {
           <VolumeKnob value={volume} onChange={setVolume} />
         </div>
       </div>
+
+      <VuMeter active={isPlaying} />
 
       <PlaybackSettings
         open={settingsOpen}
