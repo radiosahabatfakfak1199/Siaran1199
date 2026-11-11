@@ -63,7 +63,10 @@ export default function RadioPlayer() {
   const [sleepUntil, setSleepUntil] = useState<number | null>(null);
   const [now, setNow] = useState(0);
 
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const mp3Ref = useRef<HTMLAudioElement>(null);
+  const radioRef = useRef<HTMLAudioElement>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const wantPlayRef = useRef(false);
   const dialDragRef = useRef(false);
 
@@ -107,12 +110,20 @@ export default function RadioPlayer() {
   }, []);
 
   useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
+    if (mp3Ref.current) mp3Ref.current.volume = volume;
+    if (radioRef.current) radioRef.current.volume = volume;
   }, [volume]);
 
+  useEffect(
+    () => () => {
+      audioContextRef.current?.close();
+    },
+    [],
+  );
+
   useEffect(() => {
-    if (audioRef.current) audioRef.current.playbackRate = isRadio ? 1 : playbackRate;
-  }, [playbackRate, activeUrl, isRadio]);
+    if (mp3Ref.current) mp3Ref.current.playbackRate = playbackRate;
+  }, [playbackRate, activeUrl]);
 
   useEffect(() => {
     setCurrent(0);
@@ -133,7 +144,6 @@ export default function RadioPlayer() {
       }
     }, 1000);
     return () => window.clearInterval(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sleepUntil]);
 
   useEffect(() => {
@@ -180,9 +190,27 @@ export default function RadioPlayer() {
     }
   });
 
-  const startPlayback = () => {
-    const audio = audioRef.current;
+  const prepareAnalyser = () => {
+    const audio = mp3Ref.current;
     if (!audio) return;
+    let context = audioContextRef.current;
+    if (!context) {
+      context = new AudioContext();
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 64;
+      analyser.smoothingTimeConstant = 0.8;
+      context.createMediaElementSource(audio).connect(analyser);
+      analyser.connect(context.destination);
+      audioContextRef.current = context;
+      analyserRef.current = analyser;
+    }
+    void context.resume();
+  };
+
+  const startPlayback = () => {
+    const audio = isRadio ? radioRef.current : mp3Ref.current;
+    if (!audio) return;
+    if (!isRadio) prepareAnalyser();
     wantPlayRef.current = true;
     audio.play().catch((err: unknown) => {
       if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -194,7 +222,8 @@ export default function RadioPlayer() {
 
   const pausePlayback = () => {
     wantPlayRef.current = false;
-    audioRef.current?.pause();
+    mp3Ref.current?.pause();
+    radioRef.current?.pause();
   };
 
   const togglePlay = () => {
@@ -211,7 +240,7 @@ export default function RadioPlayer() {
 
   const selectTrack = (i: number) => {
     if (i === index) {
-      if (audioRef.current) audioRef.current.currentTime = 0;
+      if (mp3Ref.current) mp3Ref.current.currentTime = 0;
       startPlayback();
       return;
     }
@@ -243,21 +272,21 @@ export default function RadioPlayer() {
   };
 
   const seekTo = (seconds: number) => {
-    const audio = audioRef.current;
+    const audio = mp3Ref.current;
     if (!audio || !canSeek) return;
     const max = Number.isFinite(audio.duration) ? audio.duration : 0;
     audio.currentTime = clamp(seconds, 0, max);
     setCurrent(audio.currentTime);
   };
 
-  const seekBy = (delta: number) => seekTo((audioRef.current?.currentTime ?? 0) + delta);
+  const seekBy = (delta: number) => seekTo((mp3Ref.current?.currentTime ?? 0) + delta);
 
   const playPrevious = () => {
     if (isRadio) {
       stepStation(-1);
       return;
     }
-    const audio = audioRef.current;
+    const audio = mp3Ref.current;
     if (!audio || !track) return;
     if (audio.currentTime > RESTART_THRESHOLD || index <= 0) {
       audio.currentTime = 0;
@@ -606,7 +635,7 @@ export default function RadioPlayer() {
         </div>
       </div>
 
-      <VuMeter active={isPlaying} />
+      <VuMeter active={isPlaying} source={source} analyserRef={analyserRef} />
 
       <PlaybackSettings
         open={settingsOpen}
@@ -619,8 +648,8 @@ export default function RadioPlayer() {
       />
 
       <audio
-        ref={audioRef}
-        src={activeUrl}
+        ref={mp3Ref}
+        src={track?.url}
         preload="metadata"
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
@@ -628,6 +657,14 @@ export default function RadioPlayer() {
         onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
         onDurationChange={(e) => setDuration(e.currentTarget.duration)}
         onEnded={handleEnded}
+        onError={handleAudioError}
+      />
+      <audio
+        ref={radioRef}
+        src={station.url}
+        preload="none"
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
         onError={handleAudioError}
       />
     </div>
