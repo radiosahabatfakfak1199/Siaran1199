@@ -6,7 +6,6 @@ import {
   Music,
   Pause,
   Play,
-  Radio,
   Repeat,
   Rewind,
   Shuffle,
@@ -398,9 +397,13 @@ export default function RadioPlayer() {
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-zinc-950 px-4 py-6 text-zinc-100 sm:py-10">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-400/10 text-emerald-400 ring-1 ring-emerald-400/30">
-            <Radio size={20} />
-          </div>
+          <img
+            src="/radio-logo-transparan.png"
+            alt="Logo Radio Lokal"
+            width={48}
+            height={48}
+            className="h-12 w-12 shrink-0 object-contain"
+          />
           <div className="min-w-0">
             <h1 className="text-base font-semibold leading-tight">Radio Lokal</h1>
             <p className="truncate text-xs text-zinc-400">Pemutar MP3 dan radio online</p>
