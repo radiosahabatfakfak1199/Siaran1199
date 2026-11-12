@@ -149,7 +149,7 @@ export default function RadioPlayer() {
     if (!('mediaSession' in navigator)) return;
     const session = navigator.mediaSession;
     session.metadata = activeUrl
-      ? new MediaMetadata({ title, artist: 'Radio Lokal', album: 'Radio Lokal' })
+      ? new MediaMetadata({ title, artist: 'Sahabat Radio', album: 'Sahabat Radio' })
       : null;
     session.playbackState = activeUrl ? (isPlaying ? 'playing' : 'paused') : 'none';
 
@@ -399,14 +399,14 @@ export default function RadioPlayer() {
         <div className="flex min-w-0 items-center gap-3">
           <img
             src="/radio-logo-transparan.png"
-            alt="Logo Radio Lokal"
+            alt="Logo Sahabat Radio"
             width={48}
             height={48}
             className="h-12 w-12 shrink-0 object-contain"
           />
           <div className="min-w-0">
-            <h1 className="text-base font-semibold leading-tight">Radio Lokal</h1>
-            <p className="truncate text-xs text-zinc-400">Pemutar MP3 dan radio online</p>
+            <h1 className="text-base font-semibold leading-tight">Sahabat Radio</h1>
+            <p className="truncate text-xs text-zinc-400">Kala Suara dari Timur</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
