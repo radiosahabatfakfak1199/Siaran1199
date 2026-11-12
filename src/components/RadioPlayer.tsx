@@ -394,7 +394,7 @@ export default function RadioPlayer() {
       }));
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-zinc-950 px-4 py-6 text-zinc-100 sm:py-10">
+    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-zinc-950 px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] text-zinc-100 sm:pb-[calc(2.5rem+env(safe-area-inset-bottom))] sm:pt-[calc(2.5rem+env(safe-area-inset-top))]">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           <img

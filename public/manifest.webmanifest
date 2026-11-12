@@ -1,0 +1,24 @@
+{
+  "name": "Sahabat Radio",
+  "short_name": "Sahabat Radio",
+  "description": "Kala Suara dari Timur",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#09090B",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/radio-logo-transparan.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/radio-logo-transparan.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
