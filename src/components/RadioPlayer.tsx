@@ -16,8 +16,8 @@ import {
   Upload,
 } from 'lucide-react';
 import PlaybackSettings from '@/components/PlaybackSettings';
-import VuMeter from '@/components/VuMeter';
 import PlaylistPanel from '@/components/PlaylistPanel';
+import VuMeter from '@/components/VuMeter';
 import { SourceToggle, TransportButton, VolumeKnob } from '@/components/PlayerControls';
 import type { Source } from '@/components/PlayerControls';
 import { STATIONS } from '@/data/stations';
@@ -39,6 +39,11 @@ const RESTART_THRESHOLD = 3;
 const STORAGE_ERROR = 'Daftar lagu tidak bisa disimpan di perangkat ini.';
 const PLAY_ERROR = 'Lagu ini tidak bisa diputar. Coba file lain.';
 const STATION_ERROR = 'Stasiun tidak bisa diputar';
+
+const firstPosition = (list: Playlist[]): Position | null => {
+  const first = list.find((p) => p.songs.length > 0);
+  return first ? { playlistId: first.id, song: 0 } : null;
+};
 
 export default function RadioPlayer() {
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
@@ -81,20 +86,29 @@ export default function RadioPlayer() {
 
   useEffect(() => {
     let cancelled = false;
+    const stored = readPlaylists();
     loadStoredTracks()
       .then((records) => {
-        const loaded = records.map((r) => ({
-          id: r.id,
-          title: r.title,
-          url: URL.createObjectURL(r.blob),
-          starred: r.starred,
-        }));
+        const blobs = new Map(records.map((r) => [r.id, r.blob]));
+        const objectUrls: Record<string, string> = {};
+        const kept: Playlist[] = [];
+        for (const playlist of stored) {
+          const songs: Song[] = [];
+          for (const song of playlist.songs) {
+            const blob = blobs.get(song.id);
+            if (!blob) continue;
+            objectUrls[song.id] = URL.createObjectURL(blob);
+            songs.push(song);
+          }
+          if (songs.length > 0) kept.push({ ...playlist, songs });
+        }
         if (cancelled) {
-          loaded.forEach((t) => URL.revokeObjectURL(t.url));
+          Object.values(objectUrls).forEach((u) => URL.revokeObjectURL(u));
           return;
         }
-        setTracks(loaded);
-        setIndex(loaded.length > 0 ? 0 : -1);
+        setPlaylists(kept);
+        setUrls(objectUrls);
+        setPosition(firstPosition(kept));
         setReady(true);
       })
       .catch(() => {
@@ -106,6 +120,10 @@ export default function RadioPlayer() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (ready && !savePlaylists(playlists)) setError(STORAGE_ERROR);
+  }, [playlists, ready]);
 
   useEffect(() => {
     if (mp3Ref.current) mp3Ref.current.volume = volume;
@@ -236,20 +254,39 @@ export default function RadioPlayer() {
     setSource(next);
   };
 
-  const selectTrack = (i: number) => {
-    if (i === index) {
+  const selectPosition = (next: Position) => {
+    setError('');
+    wantPlayRef.current = true;
+    if (isRadio) {
+      radioRef.current?.pause();
+      setSource('mp3');
+    }
+    setPosition(next);
+  };
+
+  const playPosition = (next: Position) => {
+    if (position && next.playlistId === position.playlistId && next.song === position.song && !isRadio) {
       if (mp3Ref.current) mp3Ref.current.currentTime = 0;
       startPlayback();
       return;
     }
-    setError('');
-    wantPlayRef.current = true;
-    setIndex(i);
+    selectPosition(next);
   };
 
-  const handleChipClick = (i: number) => {
-    if (i === index) togglePlay();
-    else selectTrack(i);
+  const handleSongTap = (next: Position) => {
+    if (position && next.playlistId === position.playlistId && next.song === position.song && !isRadio) {
+      togglePlay();
+      return;
+    }
+    selectPosition(next);
+  };
+
+  const handlePlaylistPlay = (playlistId: string) => {
+    if (position?.playlistId === playlistId && !isRadio) {
+      togglePlay();
+      return;
+    }
+    selectPosition({ playlistId, song: 0 });
   };
 
   const handleStationTap = (i: number) => {
@@ -285,12 +322,19 @@ export default function RadioPlayer() {
       return;
     }
     const audio = mp3Ref.current;
-    if (!audio || !track) return;
-    if (audio.currentTime > RESTART_THRESHOLD || index <= 0) {
+    if (!audio || !position || !track) return;
+    if (audio.currentTime > RESTART_THRESHOLD || position.song <= 0) {
       audio.currentTime = 0;
       return;
     }
-    selectTrack(index - 1);
+    selectPosition({ playlistId: position.playlistId, song: position.song - 1 });
+  };
+
+  const advance = () => {
+    if (!position) return;
+    const next = nextPosition(playlists, position, mode === 'shuffle');
+    if (next) playPosition(next);
+    else pausePlayback();
   };
 
   const playNext = () => {
@@ -298,13 +342,12 @@ export default function RadioPlayer() {
       stepStation(1);
       return;
     }
-    if (!track) return;
-    selectTrack(pickNext(index, tracks.length, mode === 'shuffle'));
+    advance();
   };
 
   const handleEnded = () => {
-    if (isRadio || !track) return;
-    selectTrack(pickNext(index, tracks.length, mode === 'shuffle'));
+    if (isRadio) return;
+    advance();
   };
 
   const seekFromPointer = (element: HTMLElement, clientX: number) => {
@@ -319,29 +362,72 @@ export default function RadioPlayer() {
     e.target.value = '';
     if (files.length === 0) return;
 
-    const base = tracks.length;
-    const added = await Promise.all(
-      files.map(async (file, i) => {
+    const createdAt = Date.now();
+    const saved = await Promise.all(
+      files.map(async (file) => {
         const id = crypto.randomUUID();
-        const title = file.name.replace(/\.mp3$/i, '');
         try {
-          await saveStoredTrack({ id, title, blob: file, starred: false, addedAt: Date.now() + i });
+          await saveStoredTrack({ id, blob: file, addedAt: createdAt });
         } catch {
-          setError(STORAGE_ERROR);
+          return null;
         }
-        return { id, title, url: URL.createObjectURL(file), starred: false };
+        const duration = await readDuration(file);
+        const song: Song = { id, name: file.name.replace(/\.mp3$/i, ''), duration, starred: false };
+        return { song, url: URL.createObjectURL(file) };
       }),
     );
-    setTracks((prev) => [...prev, ...added]);
-    setIndex((prev) => (prev === -1 ? base : prev));
+
+    const songs: Song[] = [];
+    const newUrls: Record<string, string> = {};
+    let failed = false;
+    for (const item of saved) {
+      if (!item) {
+        failed = true;
+        continue;
+      }
+      songs.push(item.song);
+      newUrls[item.song.id] = item.url;
+    }
+    if (failed) setError(STORAGE_ERROR);
+    if (songs.length === 0) return;
+
+    const playlist: Playlist = { id: crypto.randomUUID(), name: '', createdAt, songs };
+    setUrls((prev) => ({ ...prev, ...newUrls }));
+    setPlaylists((prev) => [...prev, { ...playlist, name: `Playlist ${prev.length + 1}` }]);
+    setPosition((prev) => prev ?? { playlistId: playlist.id, song: 0 });
+  };
+
+  const deletePlaylist = (playlistId: string) => {
+    const target = playlists.find((p) => p.id === playlistId);
+    if (!target || !window.confirm(`Hapus ${target.name}?`)) return;
+    const remaining = playlists.filter((p) => p.id !== playlistId);
+    if (position?.playlistId === playlistId) {
+      pausePlayback();
+      setPosition(firstPosition(remaining));
+    }
+    setUrls((prev) => {
+      const next = { ...prev };
+      target.songs.forEach((s) => {
+        if (next[s.id]) URL.revokeObjectURL(next[s.id]);
+        delete next[s.id];
+      });
+      return next;
+    });
+    setPlaylists(remaining);
+    deleteStoredTracks(target.songs.map((s) => s.id)).catch(() => setError(STORAGE_ERROR));
+  };
+
+  const renamePlaylist = (playlistId: string, name: string) => {
+    setPlaylists((prev) => prev.map((p) => (p.id === playlistId ? { ...p, name } : p)));
   };
 
   const clearAll = async () => {
-    if (!window.confirm('Hapus semua lagu dari daftar?')) return;
+    if (!window.confirm('Hapus semua playlist dan lagu?')) return;
     pausePlayback();
-    tracks.forEach((t) => URL.revokeObjectURL(t.url));
-    setTracks([]);
-    setIndex(-1);
+    Object.values(urls).forEach((u) => URL.revokeObjectURL(u));
+    setUrls({});
+    setPlaylists([]);
+    setPosition(null);
     setError('');
     try {
       await clearStoredTracks();
@@ -351,10 +437,16 @@ export default function RadioPlayer() {
   };
 
   const toggleStar = () => {
-    if (!track || isRadio) return;
-    const starred = !track.starred;
-    setTracks((prev) => prev.map((t) => (t.id === track.id ? { ...t, starred } : t)));
-    setStoredStarred(track.id, starred).catch(() => setError(STORAGE_ERROR));
+    if (!track || !position || isRadio) return;
+    const { playlistId } = position;
+    const trackId = track.id;
+    setPlaylists((prev) =>
+      prev.map((p) =>
+        p.id !== playlistId
+          ? p
+          : { ...p, songs: p.songs.map((s) => (s.id === trackId ? { ...s, starred: !s.starred } : s)) },
+      ),
+    );
   };
 
   const cycleMode = () => {
@@ -373,24 +465,8 @@ export default function RadioPlayer() {
     setError(isRadio ? STATION_ERROR : PLAY_ERROR);
   };
 
-  const trackNumber = track ? pad(index + 1) : '--';
+  const trackNumber = track ? pad(songIndex + 1) : '--';
   const remainingLabel = duration > 0 ? `-${formatTime(remaining)}` : '--:--';
-
-  const chips = isRadio
-    ? STATIONS.map((s, i) => ({
-        key: s.url,
-        label: s.nama,
-        starred: false,
-        active: i === stationIndex,
-        onTap: () => handleStationTap(i),
-      }))
-    : tracks.map((t, i) => ({
-        key: t.id,
-        label: t.title,
-        starred: t.starred,
-        active: i === index,
-        onTap: () => handleChipClick(i),
-      }));
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-zinc-950 px-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-[calc(1.5rem+env(safe-area-inset-top))] text-zinc-100 sm:pb-[calc(2.5rem+env(safe-area-inset-bottom))] sm:pt-[calc(2.5rem+env(safe-area-inset-top))]">
@@ -422,12 +498,12 @@ export default function RadioPlayer() {
               <span className="font-mono text-xs tabular-nums text-emerald-300">{formatTime(sleepRemainingSec)}</span>
             )}
           </button>
-          {!isRadio && tracks.length > 0 && (
+          {!isRadio && playlists.length > 0 && (
             <button
               type="button"
               onClick={clearAll}
-              aria-label="Hapus semua lagu"
-              title="Hapus semua lagu"
+              aria-label="Hapus semua playlist"
+              title="Hapus semua playlist"
               className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 transition hover:border-red-400/50 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
             >
               <Trash2 size={16} />
@@ -564,33 +640,22 @@ export default function RadioPlayer() {
       </div>
 
       <div className="flex flex-col gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-        {!isRadio && !ready ? (
-          <div className="flex items-center gap-3 rounded-xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
-            <Music size={18} className="shrink-0" />
-            Memuat daftar lagu...
-          </div>
-        ) : chips.length === 0 ? (
-          <div className="flex items-center gap-3 rounded-xl border border-dashed border-zinc-700 p-4 text-sm text-zinc-400">
-            <Music size={18} className="shrink-0" />
-            Belum ada lagu. Tekan Unggah untuk memilih file MP3 dari perangkat kamu.
-          </div>
-        ) : (
+        {isRadio && (
           <div className="-mx-4 flex snap-x gap-2 overflow-x-auto px-4 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {chips.map((chip, i) => (
+            {STATIONS.map((s, i) => (
               <button
-                key={chip.key}
+                key={s.url}
                 type="button"
-                onClick={chip.onTap}
-                aria-pressed={chip.active}
+                onClick={() => handleStationTap(i)}
+                aria-pressed={i === stationIndex}
                 className={`flex shrink-0 snap-start items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition duration-150 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
-                  chip.active
+                  i === stationIndex
                     ? 'border-emerald-400 bg-emerald-400 font-semibold text-emerald-950'
                     : 'border-zinc-700 bg-zinc-800 text-zinc-200 hover:border-zinc-500'
                 }`}
               >
                 <span className="font-mono text-xs tabular-nums opacity-80">{pad(i + 1)}</span>
-                <span className="max-w-[9rem] truncate">{chip.label}</span>
-                {chip.starred && <Star size={12} className="shrink-0 fill-amber-300 text-amber-300" />}
+                <span className="max-w-[9rem] truncate">{s.nama}</span>
               </button>
             ))}
           </div>
@@ -639,6 +704,19 @@ export default function RadioPlayer() {
 
       <VuMeter active={isPlaying} source={source} analyserRef={analyserRef} />
 
+      {!isRadio && (
+        <PlaylistPanel
+          ready={ready}
+          playlists={playlists}
+          position={position}
+          isPlaying={isPlaying}
+          onPlayPlaylist={handlePlaylistPlay}
+          onPlaySong={(playlistId, song) => handleSongTap({ playlistId, song })}
+          onDeletePlaylist={deletePlaylist}
+          onRenamePlaylist={renamePlaylist}
+        />
+      )}
+
       <PlaybackSettings
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
@@ -651,7 +729,7 @@ export default function RadioPlayer() {
 
       <audio
         ref={mp3Ref}
-        src={track?.url}
+        src={trackUrl}
         preload="metadata"
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
