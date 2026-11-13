@@ -4,9 +4,7 @@ const STORE = 'tracks';
 
 export type StoredTrack = {
   id: string;
-  title: string;
   blob: Blob;
-  starred: boolean;
   addedAt: number;
 };
 
@@ -72,13 +70,9 @@ export function saveStoredTrack(record: StoredTrack): Promise<void> {
   });
 }
 
-export function setStoredStarred(id: string, starred: boolean): Promise<void> {
+export function deleteStoredTracks(ids: string[]): Promise<void> {
   return transact('readwrite', (store) => {
-    const request = store.get(id);
-    request.onsuccess = () => {
-      const record = request.result as StoredTrack | undefined;
-      if (record) store.put({ ...record, starred });
-    };
+    ids.forEach((id) => store.delete(id));
   });
 }
 

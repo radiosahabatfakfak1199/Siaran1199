@@ -3,7 +3,6 @@ import type { ChangeEvent } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import {
   FastForward,
-  Music,
   Pause,
   Play,
   Repeat,
@@ -18,18 +17,14 @@ import {
 } from 'lucide-react';
 import PlaybackSettings from '@/components/PlaybackSettings';
 import VuMeter from '@/components/VuMeter';
+import PlaylistPanel from '@/components/PlaylistPanel';
 import { SourceToggle, TransportButton, VolumeKnob } from '@/components/PlayerControls';
 import type { Source } from '@/components/PlayerControls';
 import { STATIONS } from '@/data/stations';
-import { clamp, formatTime, pad, pickNext } from '@/lib/playerUtils';
-import { clearStoredTracks, loadStoredTracks, saveStoredTrack, setStoredStarred } from '@/lib/trackStore';
-
-type Track = {
-  id: string;
-  title: string;
-  url: string;
-  starred: boolean;
-};
+import { clamp, formatTime, pad } from '@/lib/playerUtils';
+import { nextPosition, readDuration, readPlaylists, savePlaylists } from '@/lib/playlists';
+import type { Playlist, Position, Song } from '@/lib/playlists';
+import { clearStoredTracks, deleteStoredTracks, loadStoredTracks, saveStoredTrack } from '@/lib/trackStore';
 
 type Mode = 'loop' | 'shuffle';
 
@@ -46,9 +41,10 @@ const PLAY_ERROR = 'Lagu ini tidak bisa diputar. Coba file lain.';
 const STATION_ERROR = 'Stasiun tidak bisa diputar';
 
 export default function RadioPlayer() {
-  const [tracks, setTracks] = useState<Track[]>([]);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [urls, setUrls] = useState<Record<string, string>>({});
   const [ready, setReady] = useState(false);
-  const [index, setIndex] = useState(-1);
+  const [position, setPosition] = useState<Position | null>(null);
   const [source, setSource] = useState<Source>('mp3');
   const [stationIndex, setStationIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -71,14 +67,17 @@ export default function RadioPlayer() {
 
   const isRadio = source === 'radio';
   const station = STATIONS[stationIndex];
-  const track = index >= 0 ? tracks[index] : undefined;
-  const activeUrl = isRadio ? station.url : track?.url;
+  const activePlaylist = playlists.find((p) => p.id === position?.playlistId);
+  const songIndex = position?.song ?? -1;
+  const track: Song | undefined = activePlaylist?.songs[songIndex];
+  const trackUrl = track ? urls[track.id] : undefined;
+  const activeUrl = isRadio ? station.url : trackUrl;
   const canSeek = !isRadio && !!track;
   const modeInfo = MODE_INFO[mode];
   const progress = isRadio ? 1 : duration > 0 ? clamp(current / duration, 0, 1) : 0;
   const remaining = Math.max(0, duration - current);
   const sleepRemainingSec = sleepUntil === null ? 0 : Math.max(0, (sleepUntil - now) / 1000);
-  const title = isRadio ? station.nama : (track?.title ?? 'Unggah lagu MP3 untuk mulai');
+  const title = isRadio ? station.nama : (track?.name ?? 'Unggah lagu MP3 untuk mulai');
 
   useEffect(() => {
     let cancelled = false;
